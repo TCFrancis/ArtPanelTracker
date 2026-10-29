@@ -17,16 +17,27 @@
             height: 100%;
             overflow: hidden;
             font-family: sans-serif;
-            background: #000;
+            background: transparent;
         }
 
-        /* WICHTIG: Erzwingt, dass das AR.js Video-Element korrekt skaliert und sichtbar bleibt */
-        a-scene {
-            width: 100%;
-            height: 100%;
-            position: absolute;
-            top: 0;
-            left: 0;
+        /* WICHTIG: Erzwingt, dass das AR.js Video im Hintergrund liegt und sichtbar ist */
+        video {
+            position: absolute !important;
+            top: 0 !important;
+            left: 0 !important;
+            width: 100% !important;
+            height: 100% !important;
+            object-fit: cover !important;
+            z-index: 1 !important;
+        }
+
+        /* A-Frame Canvas muss transparent sein, damit das Video durchschimmert */
+        .a-canvas {
+            position: absolute !important;
+            top: 0 !important;
+            left: 0 !important;
+            z-index: 2 !important;
+            background: transparent !important;
         }
 
         /* UI-Steuerung über dem AR-Canvas */
@@ -35,7 +46,7 @@
             bottom: 20px;
             left: 50%;
             transform: translateX(-50%);
-            z-index: 99999; /* Sehr hoch, damit es immer bedienbar bleibt */
+            z-index: 99999;
             background: rgba(0, 0, 0, 0.75);
             padding: 15px;
             border-radius: 12px;
@@ -97,9 +108,9 @@
 </head>
 <body>
 
-    <div id="info-overlay">Lade Kamera... Bitte erlaube den Zugriff.</div>
+    <div id="info-overlay">Suche Marker (Hiro)...</div>
 
-    <!-- AR-Szene mit optimierten Parametern -->
+    <!-- AR-Szene -->
     <a-scene embedded arjs="sourceType: webcam; sourceWidth: 1280; sourceHeight: 960; displayWidth: 1280; displayHeight: 960; debugUIEnabled: false;" vr-mode-ui="enabled: false">
         
         <!-- Marker K1 (Hiro-Standard) -->
@@ -167,7 +178,7 @@
             }
         });
 
-        // Status-Updates für Marker & Kamera
+        // Status-Updates für Marker
         const marker = document.getElementById('marker-k1');
         const infoOverlay = document.getElementById('info-overlay');
 
@@ -180,17 +191,6 @@
             infoOverlay.innerText = "Suche Marker (Hiro)...";
             infoOverlay.style.color = "#ffcc00";
         });
-
-        // Prüfen, ob das Video erfolgreich startet
-        setTimeout(() => {
-            const videoEl = document.querySelector('video');
-            if (!videoEl || videoEl.paused) {
-                infoOverlay.innerText = "Kamerastfehler! Bitte HTTPS nutzen.";
-                infoOverlay.style.color = "#ff3333";
-            } else {
-                infoOverlay.innerText = "Suche Marker (Hiro)...";
-            }
-        }, 2500);
     </script>
 </body>
 </html>
