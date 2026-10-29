@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>AR Künstler-Projektionshilfe</title>
+    
+    <!-- A-Frame und AR.js für Web-AR und Marker-Tracking -->
+    <script src="https://aframe.io/releases/1.4.0/aframe.min.js"></script>
+    <script src="https://raw.githack.com/AR-js-org/AR.js/master/aframe/build/aframe-ar.js"></script>
+
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            font-family: sans-serif;
+            background: #000;
+        }
+
+        /* UI-Steuerung über dem AR-Canvas */
+        #ui-container {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 999;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 15px;
+            border-radius: 12px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            width: 85%;
+            max-width: 400px;
+            color: white;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+        }
+
+        .control-group {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+
+        .control-group label {
+            font-size: 12px;
+            display: flex;
+            justify-content: space-between;
+        }
+
+        input[type=range] {
+            width: 100%;
+            cursor: pointer;
+        }
+
+        /* Datei-Upload für eigene Grafik G1 */
+        #file-upload-label {
+            background: #007bff;
+            color: white;
+            padding: 8px;
+            text-align: center;
+            border-radius: 6px;
+            font-size: 14px;
+            cursor: pointer;
+        }
+
+        #file-input {
+            display: none;
+        }
+
+        /* Infotext für Teilanzeigen */
+        #info-overlay {
+            position: absolute;
+            top: 10px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 999;
+            background: rgba(0, 0, 0, 0.6);
+            color: #ffcc00;
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 11px;
+            text-align: center;
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="info-overlay">Halte die Marker (ArUco/Hiro) in die Kamera</div>
+
+    <!-- AR.js / A-Frame Szene -->
+    <!-- embedded arjs schaltet die UI so, dass es als Web-App im Browser läuft -->
+    <a-scene embedded arjs="sourceType: webcam; debugUIEnabled: false; detectionMode: mono_and_matrix; matrixCodeType: 3x3;" vr-mode-ui="enabled: false">
+        
+        <!-- Definiere den Marker (Standard Hiro-Marker oder Matrix-Marker) -->
+        <!-- Sobald der Marker sichtbar ist, wird das 3D-Objekt (Leinwand / Grafik) darauf ausgerichtet -->
+        <a-marker preset="hiro" id="marker-k1">
+            <!-- Die Grafik G1 als Ebene (Plane) auf der Leinwand K1 -->
+            <!-- Du kannst hier eine Bild-URL oder ein hochgeladenes Bild einbinden -->
+            <a-plane id="graphic-g1" position="0 0 0" rotation="-90 0 0" width="2" height="1.5" material="src: url(https://via.placeholder.com/800x600.png?text=Grafik+G1); transparent: true; opacity: 0.8;"></a-plane>
+        </a-marker>
+
+        <!-- Kamera der AR-Umgebung -->
+        <a-entity camera></a-entity>
+    </a-scene>
+
+    <!-- UI für Schieberegler & Datei-Upload -->
+    <div id="ui-container">
+        <label id="file-upload-label" for="file-input">📁 Grafik G1 auswählen</label>
+        <input type="file" id="file-input" accept="image/*">
+
+        <div class="control-group">
+            <label><span>Transparenz Grafik (G1)</span><span id="val-g1">80%</span></label>
+            <input type="range" id="range-g1" min="0" max="1" step="0.05" value="0.8">
+        </div>
+
+        <div class="control-group">
+            <label><span>Helligkeit/Kontrast Video (V1)</span><span id="val-v1">100%</span></label>
+            <input type="range" id="range-v1" min="0.2" max="2" step="0.05" value="1">
+        </div>
+    </div>
+
+    <script>
+        // 1. Eigene Grafik G1 per Datei-Upload laden
+        const fileInput = document.getElementById('file-input');
+        const graphicG1 = document.getElementById('graphic-g1');
+
+        fileInput.addEventListener('change', function(event) {
+            const file = event.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    // Setze das hochgeladene Bild als Material für die A-Frame Plane
+                    graphicG1.setAttribute('material', 'src', e.target.result);
+                };
+                reader.readAsDataURL(file);
+            }
+        });
+
+        // 2. Schieberegler für Transparenz der Grafik G1
+        const rangeG1 = document.getElementById('range-g1');
+        const valG1 = document.getElementById('val-g1');
+
+        rangeG1.addEventListener('input', (e) => {
+            const opacity = e.target.value;
+            valG1.innerText = Math.round(opacity * 100) + '%';
+            
+            // Aktualisiere die Opazität in A-Frame
+            const currentMat = graphicG1.getAttribute('material');
+            currentMat.opacity = opacity;
+            graphicG1.setAttribute('material', currentMat);
+        });
+
+        // 3. Videobild V1 Manipulation (Filter auf das AR-Video-Element)
+        const rangeV1 = document.getElementById('range-v1');
+        const valV1 = document.getElementById('val-v1');
+
+        rangeV1.addEventListener('input', (e) => {
+            const val = e.target.value;
+            valV1.innerText = Math.round(val * 100) + '%';
+            
+            // AR.js erstellt zur Laufzeit ein <video> Element im DOM
+            const videoEl = document.querySelector('video');
+            if (videoEl) {
+                videoEl.style.filter = `brightness(${val})`;
+            }
+        });
+
+        // Hinweis bei Marker-Verlust (wenn Leinwand K1 nicht zu 100% im Bild ist)
+        const marker = document.getElementById('marker-k1');
+        const infoOverlay = document.getElementById('info-overlay');
+
+        marker.addEventListener('markerFound', () => {
+            infoOverlay.innerText = "Leinwand K1 erkannt (Tracking aktiv)";
+            infoOverlay.style.color = "#00ff66";
+        });
+
+        marker.addEventListener('markerLost', () => {
+            infoOverlay.innerText = "Marker nicht im Bild - Halte die Marker im Sichtfeld";
+            infoOverlay.style.color = "#ff3333";
+        });
+    </script>
+</body>
+</html>
