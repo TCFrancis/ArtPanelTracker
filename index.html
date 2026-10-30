@@ -3,194 +3,604 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>AR Künstler-Projektionshilfe</title>
+    <title>Leinwand AR & Luma-Key Slider v2.0</title>
     
-    <!-- A-Frame und AR.js -->
-    <script src="https://aframe.io/releases/1.4.0/aframe.min.js"></script>
-    <script src="https://raw.githack.com/AR-js-org/AR.js/master/aframe/build/aframe-ar.js"></script>
+    <!-- OpenCV.js per CDN -->
+    <script async src="https://docs.opencv.org/4.8.0/opencv.js" onload="onOpenCvReady();" type="text/javascript"></script>
 
     <style>
-        body, html {
+        html, body {
             margin: 0;
             padding: 0;
             width: 100%;
             height: 100%;
             overflow: hidden;
-            font-family: sans-serif;
-            background: transparent;
+            background-color: #000;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
         }
 
-        /* WICHTIG: Erzwingt, dass das AR.js Video im Hintergrund liegt und sichtbar ist */
-        video {
-            position: absolute !important;
-            top: 0 !important;
-            left: 0 !important;
-            width: 100% !important;
-            height: 100% !important;
-            object-fit: cover !important;
-            z-index: 1 !important;
-        }
-
-        /* A-Frame Canvas muss transparent sein, damit das Video durchschimmert */
-        .a-canvas {
-            position: absolute !important;
-            top: 0 !important;
-            left: 0 !important;
-            z-index: 2 !important;
-            background: transparent !important;
-        }
-
-        /* UI-Steuerung über dem AR-Canvas */
-        #ui-container {
+        #app-canvas {
             position: absolute;
-            bottom: 20px;
-            left: 50%;
-            transform: translateX(-50%);
-            z-index: 99999;
-            background: rgba(0, 0, 0, 0.75);
-            padding: 15px;
-            border-radius: 12px;
-            display: flex;
-            flex-direction: column;
-            gap: 10px;
-            width: 85%;
-            max-width: 400px;
-            color: white;
-            box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: block;
+            object-fit: contain;
         }
 
-        .control-group {
+        /* --- UI oben rechts: Checkbox, Upload & Slider (Luma-Key ganz oben) --- */
+        #ui-controls {
+            position: absolute;
+            top: 15px;
+            right: 15px;
+            z-index: 20;
+            background: rgba(0, 0, 0, 0.85);
+            padding: 10px 14px;
+            border-radius: 12px;
+            color: white;
+            font-size: 11px;
             display: flex;
             flex-direction: column;
+            gap: 8px;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.4);
+            backdrop-filter: blur(5px);
+            width: 190px;
+        }
+
+        .control-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
             gap: 5px;
         }
 
-        .control-group label {
-            font-size: 12px;
-            display: flex;
-            justify-content: space-between;
-        }
-
-        input[type=range] {
-            width: 100%;
+        .control-row input[type="checkbox"] {
+            transform: scale(1.1);
             cursor: pointer;
         }
 
-        #file-upload-label {
-            background: #007bff;
+        .upload-btn-label {
+            background-color: #007AFF;
             color: white;
-            padding: 8px;
-            text-align: center;
+            padding: 5px 8px;
             border-radius: 6px;
-            font-size: 14px;
+            font-size: 11px;
+            font-weight: bold;
             cursor: pointer;
+            text-align: center;
+            width: 100%;
         }
 
         #file-input {
             display: none;
         }
 
-        #info-overlay {
+        .slider-group {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+
+        .slider-group label {
+            display: flex;
+            justify-content: space-between;
+            font-size: 10px;
+            color: #ccc;
+        }
+
+        .slider-group input[type="range"] {
+            width: 100%;
+            cursor: pointer;
+        }
+
+        #start-screen {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.9);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 30;
+            color: white;
+            text-align: center;
+            padding: 20px;
+        }
+
+        #start-btn {
+            background-color: #007AFF;
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            font-size: 18px;
+            font-weight: bold;
+            border-radius: 30px;
+            cursor: pointer;
+            box-shadow: 0 4px 10px rgba(0, 122, 255, 0.4);
+            margin-top: 20px;
+        }
+
+        #start-btn:disabled {
+            background-color: #555;
+            cursor: not-allowed;
+        }
+
+        #debug-info {
             position: absolute;
             top: 15px;
-            left: 50%;
-            transform: translateX(-50%);
-            z-index: 99999;
-            background: rgba(0, 0, 0, 0.7);
-            color: #ffcc00;
-            padding: 6px 14px;
-            border-radius: 20px;
+            left: 15px;
+            color: #00ffcc;
+            font-family: monospace;
             font-size: 12px;
-            text-align: center;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 8px;
+            border-radius: 6px;
+            z-index: 20;
             pointer-events: none;
         }
     </style>
 </head>
 <body>
 
-    <div id="info-overlay">Suche Marker (Hiro)...</div>
+    <div id="start-screen">
+        <h2>Leinwand AR (v2.0 - Luma-Key Slider)</h2>
+        <p id="loading-status">Lade OpenCV.js...</p>
+        <button id="start-btn" disabled>Bitte warten...</button>
+    </div>
 
-    <!-- AR-Szene -->
-    <a-scene embedded arjs="sourceType: webcam; sourceWidth: 1280; sourceHeight: 960; displayWidth: 1280; displayHeight: 960; debugUIEnabled: false;" vr-mode-ui="enabled: false">
+    <!-- UI: Checkbox, Upload und Slider oben rechts -->
+    <div id="ui-controls">
+        <div class="control-row">
+            <label for="marker-mode">Marker-Modus</label>
+            <input type="checkbox" id="marker-mode">
+        </div>
+        <div>
+            <label for="file-input" class="upload-btn-label">Bild G1 wählen</label>
+            <input type="file" id="file-input" accept="image/*">
+        </div>
+        <hr style="border: 0; border-top: 1px solid #444; margin: 2px 0;">
         
-        <!-- Marker K1 (Hiro-Standard) -->
-        <a-marker preset="hiro" id="marker-k1">
-            <a-plane id="graphic-g1" position="0 0 0" rotation="-90 0 0" width="2" height="1.5" material="src: url(https://via.placeholder.com/800x600.png?text=Grafik+G1); transparent: true; opacity: 0.8;"></a-plane>
-        </a-marker>
-
-        <a-entity camera></a-entity>
-    </a-scene>
-
-    <!-- Bedien-UI -->
-    <div id="ui-container">
-        <label id="file-upload-label" for="file-input">📁 Grafik G1 auswählen</label>
-        <input type="file" id="file-input" accept="image/*">
-
-        <div class="control-group">
-            <label><span>Transparenz Grafik (G1)</span><span id="val-g1">80%</span></label>
-            <input type="range" id="range-g1" min="0" max="1" step="0.05" value="0.8">
+        <!-- NEUER LUMA-KEY SLIDER (ÜBER T1 & T2 platziert) -->
+        <div class="slider-group">
+            <label><span>Luma-Key Sens.</span><span id="key-val">230</span></label>
+            <input type="range" id="slider-key" min="150" max="250" step="1" value="230">
         </div>
 
-        <div class="control-group">
-            <label><span>Helligkeit Video (V1)</span><span id="val-v1">100%</span></label>
-            <input type="range" id="range-v1" min="0.2" max="2" step="0.05" value="1">
+        <div class="slider-group">
+            <label><span>Transp. V1 (T1)</span><span id="t1-val">1.0</span></label>
+            <input type="range" id="slider-t1" min="0" max="1" step="0.05" value="1">
+        </div>
+        <div class="slider-group">
+            <label><span>Transp. G2 (T2)</span><span id="t2-val">1.0</span></label>
+            <input type="range" id="slider-t2" min="0" max="1" step="0.05" value="1">
         </div>
     </div>
 
-    <script>
-        // Logik für Datei-Upload
-        const fileInput = document.getElementById('file-input');
-        const graphicG1 = document.getElementById('graphic-g1');
+    <div id="debug-info">Warte auf Start...</div>
+    <canvas id="app-canvas"></canvas>
+    
+    <canvas id="processing-canvas" width="320" height="568" style="display:none;"></canvas>
+    <canvas id="g1-canvas" style="display:none;"></canvas>
+    <canvas id="v1-canvas" width="1080" height="1920" style="display:none;"></canvas>
 
-        fileInput.addEventListener('change', function(event) {
+    <script>
+        let opencvReady = false;
+
+        function onOpenCvReady() {
+            cv['onRuntimeInitialized'] = () => {
+                opencvReady = true;
+                document.getElementById('loading-status').innerText = "OpenCV.js bereit!";
+                const btn = document.getElementById('start-btn');
+                btn.disabled = false;
+                btn.innerText = "App starten";
+            };
+        }
+
+        const canvas = document.getElementById('app-canvas');
+        const ctx = canvas.getContext('2d');
+        const procCanvas = document.getElementById('processing-canvas');
+        const procCtx = procCanvas.getContext('2d', { willReadFrequently: true });
+        
+        const g1Canvas = document.getElementById('g1-canvas');
+        const g1Ctx = g1Canvas.getContext('2d', { willReadFrequently: true });
+
+        const v1Canvas = document.getElementById('v1-canvas');
+        const v1Ctx = v1Canvas.getContext('2d', { willReadFrequently: true });
+
+        const startScreen = document.getElementById('start-screen');
+        const startBtn = document.getElementById('start-btn');
+        const debugInfo = document.getElementById('debug-info');
+        const markerModeCheckbox = document.getElementById('marker-mode');
+        const fileInput = document.getElementById('file-input');
+        
+        // Slider Elemente
+        const sliderKey = document.getElementById('slider-key');
+        const keyValLabel = document.getElementById('key-val');
+        const sliderT1 = document.getElementById('slider-t1');
+        const sliderT2 = document.getElementById('slider-t2');
+        const t1ValLabel = document.getElementById('t1-val');
+        const t2ValLabel = document.getElementById('t2-val');
+
+        const TARGET_WIDTH = 1080;
+        const TARGET_HEIGHT = 1920;
+
+        let b1 = false;
+        markerModeCheckbox.checked = false;
+        let searchStartTime = 0;
+
+        // --- VARIABLEN (T1, T2 und White Threshold) ---
+        let T1 = 1.0;
+        let T2 = 1.0;
+        let WHITE_THRESHOLD = 230;
+
+        sliderKey.addEventListener('input', (e) => {
+            WHITE_THRESHOLD = parseInt(e.target.value);
+            keyValLabel.innerText = WHITE_THRESHOLD;
+        });
+
+        sliderT1.addEventListener('input', (e) => {
+            T1 = parseFloat(e.target.value);
+            t1ValLabel.innerText = T1.toFixed(2);
+        });
+
+        sliderT2.addEventListener('input', (e) => {
+            T2 = parseFloat(e.target.value);
+            t2ValLabel.innerText = T2.toFixed(2);
+        });
+
+        markerModeCheckbox.addEventListener('change', () => {
+            if (markerModeCheckbox.checked) {
+                searchStartTime = performance.now();
+                b1 = false;
+            } else {
+                b1 = false;
+            }
+        });
+
+        let G1 = null;
+        let g1Mat = null;
+        let g2Mat = null;
+        let V2Mat = null;
+
+        fileInput.addEventListener('change', (event) => {
             const file = event.target.files[0];
             if (file) {
                 const reader = new FileReader();
                 reader.onload = function(e) {
-                    graphicG1.setAttribute('material', 'src', e.target.result);
+                    const img = new Image();
+                    img.onload = function() {
+                        G1 = img;
+                        g1Canvas.width = img.width;
+                        g1Canvas.height = img.height;
+                        g1Ctx.clearRect(0, 0, img.width, img.height);
+                        g1Ctx.drawImage(img, 0, 0);
+                        
+                        if (g1Mat) g1Mat.delete();
+                        let tmpMat = cv.imread(g1Canvas);
+                        g1Mat = new cv.Mat();
+                        cv.cvtColor(tmpMat, g1Mat, cv.COLOR_RGBA2RGBA);
+                        tmpMat.delete();
+
+                        debugInfo.innerHTML = "Grafik G1 geladen!";
+                    };
+                    img.src = e.target.result;
                 };
                 reader.readAsDataURL(file);
             }
         });
 
-        // Schieberegler G1 Opazität
-        const rangeG1 = document.getElementById('range-g1');
-        const valG1 = document.getElementById('val-g1');
+        const V1 = document.createElement('video');
+        V1.setAttribute('autoplay', '');
+        V1.setAttribute('playsinline', '');
+        V1.setAttribute('muted', '');
 
-        rangeG1.addEventListener('input', (e) => {
-            const opacity = e.target.value;
-            valG1.innerText = Math.round(opacity * 100) + '%';
-            const currentMat = graphicG1.getAttribute('material');
-            currentMat.opacity = opacity;
-            graphicG1.setAttribute('material', currentMat);
-        });
+        let P1 = { x: 216, y: 384 };
+        let P2 = { x: 864, y: 384 };
+        let P3 = { x: 864, y: 1536 };
+        let P4 = { x: 216, y: 1536 };
 
-        // Schieberegler V1 Helligkeit
-        const rangeV1 = document.getElementById('range-v1');
-        const valV1 = document.getElementById('val-v1');
+        let occlusionFramesCount = 0;
+        const MAX_OCCLUSION_FRAMES = 45;
 
-        rangeV1.addEventListener('input', (e) => {
-            const val = e.target.value;
-            valV1.innerText = Math.round(val * 100) + '%';
-            const videoEl = document.querySelector('video');
-            if (videoEl) {
-                videoEl.style.filter = `brightness(${val})`;
+        let lastTime = 0;
+        const fpsInterval = 1000 / 30;
+
+        function resizeCanvas() {
+            canvas.width = TARGET_WIDTH;
+            canvas.height = TARGET_HEIGHT;
+        }
+
+        window.addEventListener('resize', resizeCanvas);
+
+        async function initCamera() {
+            if (!opencvReady) return;
+            try {
+                const constraints = {
+                    video: {
+                        facingMode: { ideal: "environment" },
+                        width: { ideal: TARGET_WIDTH },
+                        height: { ideal: TARGET_HEIGHT }
+                    },
+                    audio: false
+                };
+
+                const stream = await navigator.mediaDevices.getUserMedia(constraints);
+                V1.srcObject = stream;
+                await V1.play();
+
+                startScreen.style.display = 'none';
+                resizeCanvas();
+                requestAnimationFrame(renderLoop);
+            } catch (err) {
+                console.error("Kamerazugriff verweigert:", err);
+                alert("Kamerazugriff verweigert oder HTTPS fehlt!");
             }
-        });
+        }
 
-        // Status-Updates für Marker
-        const marker = document.getElementById('marker-k1');
-        const infoOverlay = document.getElementById('info-overlay');
+        function processTracking() {
+            if (!opencvReady || V1.readyState !== V1.HAVE_ENOUGH_DATA) return;
 
-        marker.addEventListener('markerFound', () => {
-            infoOverlay.innerText = "Leinwand K1 erkannt!";
-            infoOverlay.style.color = "#00ff66";
-        });
+            procCtx.drawImage(V1, 0, 0, procCanvas.width, procCanvas.height);
+            let src = cv.imread(procCanvas);
+            const scaleX = TARGET_WIDTH / procCanvas.width;
+            const scaleY = TARGET_HEIGHT / procCanvas.height;
 
-        marker.addEventListener('markerLost', () => {
-            infoOverlay.innerText = "Suche Marker (Hiro)...";
-            infoOverlay.style.color = "#ffcc00";
-        });
+            let foundNewValidCorners = false;
+
+            if (markerModeCheckbox.checked && !b1) {
+                let elapsedSeconds = (performance.now() - searchStartTime) / 1000;
+                if (elapsedSeconds <= 10) {
+                    let hsv = new cv.Mat();
+                    let mask = new cv.Mat();
+                    try {
+                        cv.cvtColor(src, hsv, cv.COLOR_RGBA2RGB);
+                        cv.cvtColor(hsv, hsv, cv.COLOR_RGB2HSV);
+                        let low = new cv.Scalar(100, 150, 50);
+                        let high = new cv.Scalar(140, 255, 255);
+                        cv.inRange(hsv, low, high, mask);
+
+                        let contours = new cv.MatVector();
+                        let hierarchy = new cv.Mat();
+                        cv.findContours(mask, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
+
+                        if (contours.size() >= 4) {
+                            let points = [];
+                            for (let i = 0; i < contours.size(); i++) {
+                                let M = cv.moments(contours.get(i));
+                                if (M.m00 > 10) {
+                                    points.push({
+                                        x: (M.m10 / M.m00) * scaleX,
+                                        y: (M.m01 / M.m00) * scaleY
+                                    });
+                                }
+                            }
+                            if (points.length >= 4) {
+                                let sorted = sortCorners(points);
+                                updateSmoothedCorners(sorted[0], sorted[1], sorted[2], sorted[3]);
+                                foundNewValidCorners = true;
+                                b1 = true;
+                            }
+                            contours.delete();
+                            hierarchy.delete();
+                        }
+                    } finally {
+                        hsv.delete();
+                        mask.delete();
+                    }
+                } else {
+                    b1 = false;
+                    markerModeCheckbox.checked = false;
+                }
+            }
+
+            if (!b1 || !foundNewValidCorners) {
+                let gray = new cv.Mat();
+                let blurred = new cv.Mat();
+                let edges = new cv.Mat();
+                let contours = new cv.MatVector();
+                let hierarchy = new cv.Mat();
+
+                try {
+                    cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
+                    cv.GaussianBlur(gray, blurred, new cv.Size(5, 5), 0);
+                    cv.Canny(blurred, edges, 50, 150);
+                    cv.findContours(edges, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
+
+                    let maxArea = 0;
+                    let bestApprox = null;
+
+                    for (let i = 0; i < contours.size(); ++i) {
+                        let cnt = contours.get(i);
+                        let area = cv.contourArea(cnt);
+                        if (area > 500) {
+                            let peri = cv.arcLength(cnt, true);
+                            let approx = new cv.Mat();
+                            cv.approxPolyDP(cnt, approx, 0.02 * peri, true);
+                            if (approx.rows === 4 && area > maxArea) {
+                                maxArea = area;
+                                if (bestApprox) bestApprox.delete();
+                                bestApprox = approx;
+                            } else {
+                                approx.delete();
+                            }
+                        }
+                        cnt.delete();
+                    }
+
+                    if (bestApprox) {
+                        let pts = [];
+                        for (let i = 0; i < 4; i++) {
+                            pts.push({
+                                x: bestApprox.data32i[i * 2] * scaleX,
+                                y: bestApprox.data32i[i * 2 + 1] * scaleY
+                            });
+                        }
+                        let sorted = sortCorners(pts);
+                        updateSmoothedCorners(sorted[0], sorted[1], sorted[2], sorted[3]);
+                        foundNewValidCorners = true;
+                        bestApprox.delete();
+                    }
+                } finally {
+                    gray.delete(); blurred.delete(); edges.delete(); contours.delete(); hierarchy.delete();
+                }
+            }
+
+            if (!foundNewValidCorners) {
+                occlusionFramesCount++;
+                if (occlusionFramesCount > MAX_OCCLUSION_FRAMES) {
+                    setFallbackCorners();
+                }
+            } else {
+                occlusionFramesCount = 0;
+            }
+
+            src.delete();
+        }
+
+        function updateSmoothedCorners(newP1, newP2, newP3, newP4) {
+            const smoothingFactor = 0.3;
+            P1.x += (newP1.x - P1.x) * smoothingFactor; P1.y += (newP1.y - P1.y) * smoothingFactor;
+            P2.x += (newP2.x - P2.x) * smoothingFactor; P2.y += (newP2.y - P2.y) * smoothingFactor;
+            P3.x += (newP3.x - P3.x) * smoothingFactor; P3.y += (newP3.y - P3.y) * smoothingFactor;
+            P4.x += (newP4.x - P4.x) * smoothingFactor; P4.y += (newP4.y - P4.y) * smoothingFactor;
+        }
+
+        function sortCorners(pts) {
+            let tl = pts.reduce((min, p) => (p.x + p.y < min.x + min.y) ? p : min, pts[0]);
+            let br = pts.reduce((max, p) => (p.x + p.y > max.x + max.y) ? p : max, pts[0]);
+            let tr = pts.reduce((min, p) => ((p.y - p.x) < (min.y - min.x)) ? p : min, pts[0]);
+            let bl = pts.reduce((max, p) => ((p.y - p.x) > (max.y - max.x)) ? p : max, pts[0]);
+            return [tl, tr, br, bl];
+        }
+
+        function setFallbackCorners() {
+            P1 = { x: TARGET_WIDTH * 0.2, y: TARGET_HEIGHT * 0.2 };
+            P2 = { x: TARGET_WIDTH * 0.8, y: TARGET_HEIGHT * 0.2 };
+            P3 = { x: TARGET_WIDTH * 0.8, y: TARGET_HEIGHT * 0.8 };
+            P4 = { x: TARGET_WIDTH * 0.2, y: TARGET_HEIGHT * 0.8 };
+        }
+
+        // RENDER-SCHLEIFE (30 fps)
+        function renderLoop(timestamp) {
+            requestAnimationFrame(renderLoop);
+
+            const elapsed = timestamp - lastTime;
+            if (elapsed > fpsInterval) {
+                lastTime = timestamp - (elapsed % fpsInterval);
+
+                processTracking();
+
+                v1Ctx.clearRect(0, 0, TARGET_WIDTH, TARGET_HEIGHT);
+                if (V1.readyState === V1.HAVE_ENOUGH_DATA) {
+                    drawVideoCover(v1Ctx, V1, TARGET_WIDTH, TARGET_HEIGHT);
+                }
+                let v1Mat = cv.imread(v1Canvas);
+
+                if (G1 && g1Mat && opencvReady) {
+                    try {
+                        let srcTri = cv.matFromCsv(`0, 0; ${g1Mat.cols}, 0; ${g1Mat.cols}, ${g1Mat.rows}; 0, ${g1Mat.rows}`);
+                        let dstTri = cv.matFromCsv(`${P1.x}, ${P1.y}; ${P2.x}, ${P2.y}; ${P3.x}, ${P3.y}; ${P4.x}, ${P4.y}`);
+
+                        let dsize = new cv.Size(TARGET_WIDTH, TARGET_HEIGHT);
+                        let M = cv.findHomography(srcTri, dstTri);
+                        
+                        if (g2Mat) g2Mat.delete();
+                        g2Mat = new cv.Mat();
+                        cv.warpPerspective(g1Mat, g2Mat, M, dsize, cv.INTER_LINEAR, cv.BORDER_CONSTANT, new cv.Scalar(0, 0, 0, 0));
+
+                        if (V2Mat) V2Mat.delete();
+                        V2Mat = new cv.Mat();
+                        v1Mat.copyTo(V2Mat);
+
+                        // --- COMPOSITING MIT DYNAMISCHEM WHITE_THRESHOLD ---
+                        for (let y = 0; y < TARGET_HEIGHT; y += 2) {
+                            for (let x = 0; x < TARGET_WIDTH; x += 2) {
+                                let idx = (y * TARGET_WIDTH + x) * 4;
+
+                                let v1R = v1Mat.data[idx];
+                                let v1G = v1Mat.data[idx + 1];
+                                let v1B = v1Mat.data[idx + 2];
+
+                                let isV1White = (v1R > WHITE_THRESHOLD && v1G > WHITE_THRESHOLD && v1B > WHITE_THRESHOLD);
+                                let v3Alpha = isV1White ? 0.0 : T1;
+                                let g2Alpha = (g2Mat.data[idx + 3] / 255.0) * T2;
+                                let hasV4Pixel = (g2Alpha > 0 && !isV1White);
+
+                                let r, g, b;
+                                if (hasV4Pixel) {
+                                    r = v1R * v3Alpha + g2Mat.data[idx]     * g2Alpha;
+                                    g = v1G * v3Alpha + g2Mat.data[idx + 1] * g2Alpha;
+                                    b = v1B * v3Alpha + g2Mat.data[idx + 2] * g2Alpha;
+                                } else {
+                                    r = v1R * v3Alpha;
+                                    g = v1G * v3Alpha;
+                                    b = v1B * v3Alpha;
+                                }
+
+                                V2Mat.data[idx]     = Math.min(255, Math.max(0, r));
+                                V2Mat.data[idx + 1] = Math.min(255, Math.max(0, g));
+                                V2Mat.data[idx + 2] = Math.min(255, Math.max(0, b));
+                                V2Mat.data[idx + 3] = isV1White ? 0 : 255;
+                            }
+                        }
+
+                        cv.imshow(canvas, V2Mat);
+
+                        srcTri.delete();
+                        dstTri.delete();
+                        M.delete();
+                    } catch (e) {
+                        console.error("Compositing Fehler:", e);
+                        cv.imshow(canvas, v1Mat);
+                    }
+                } else {
+                    cv.imshow(canvas, v1Mat);
+                    
+                    ctx.save();
+                    ctx.beginPath();
+                    ctx.moveTo(P1.x, P1.y);
+                    ctx.lineTo(P2.x, P2.y);
+                    ctx.lineTo(P3.x, P3.y);
+                    ctx.lineTo(P4.x, P4.y);
+                    ctx.closePath();
+                    ctx.lineWidth = 4;
+                    ctx.strokeStyle = b1 ? '#00ff00' : '#00ffcc';
+                    ctx.stroke();
+
+                    ctx.fillStyle = '#ffffff';
+                    ctx.font = 'bold 24px sans-serif';
+                    ctx.fillText("Bitte Grafik G1 wählen (v2.0 Luma Slider)", P1.x + 20, P1.y + 40);
+                    ctx.restore();
+                }
+
+                v1Mat.delete();
+            }
+        }
+
+        function drawVideoCover(context, video, canvasWidth, canvasHeight) {
+            const videoRatio = video.videoWidth / video.videoHeight;
+            const canvasRatio = canvasWidth / canvasHeight;
+            let renderWidth, renderHeight, offsetX, offsetY;
+
+            if (canvasRatio > videoRatio) {
+                renderWidth = canvasWidth;
+                renderHeight = canvasWidth / videoRatio;
+                offsetX = 0;
+                offsetY = (canvasHeight - renderHeight) / 2;
+            } else {
+                renderHeight = canvasHeight;
+                renderWidth = canvasHeight * videoRatio;
+                offsetX = (canvasWidth - renderWidth) / 2;
+                offsetY = 0;
+            }
+            context.drawImage(video, offsetX, offsetY, renderWidth, renderHeight);
+        }
+
+        startBtn.addEventListener('click', initCamera);
     </script>
 </body>
 </html>
